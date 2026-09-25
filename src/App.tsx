@@ -16,7 +16,11 @@ import {
   Dna,
   Zap,
   Layers,
-  Sparkles
+  Sparkles,
+  Bot,
+  Send,
+  MessageSquare,
+  XCircle
 } from 'lucide-react';
 
 interface ToolResult {
@@ -27,9 +31,34 @@ interface ToolResult {
   content?: Array<{ type: string; text: string }>;
 }
 
+interface AskToolCall {
+  name: string;
+  args: any;
+  failed: boolean;
+}
+
+interface UnavailableServer {
+  address: string;
+  reason: string;
+}
+
+interface AskResponse {
+  answer: string;
+  tool_calls: AskToolCall[];
+  unavailable: UnavailableServer[];
+  model: string;
+  answered_at: string;
+}
+
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'overview' | 'tools' | 'architecture' | 'calculator'>('overview');
+  const [activeTab, setActiveTab] = useState<'ask' | 'overview' | 'tools' | 'architecture' | 'calculator'>('ask');
   const [copiedEndpoint, setCopiedEndpoint] = useState(false);
+
+  // Ask Agent state
+  const [askQuestion, setAskQuestion] = useState('How many calories and protein are in 100g of oats?');
+  const [askLoading, setAskLoading] = useState(false);
+  const [askResult, setAskResult] = useState<AskResponse | null>(null);
+  const [askError, setAskError] = useState<string | null>(null);
 
   // Nutrition tool state
   const [nutritionQuery, setNutritionQuery] = useState('greek yogurt');
@@ -81,6 +110,38 @@ export default function App() {
     navigator.clipboard.writeText(text);
     setCopiedEndpoint(true);
     setTimeout(() => setCopiedEndpoint(false), 2000);
+  };
+
+  // Submit question to /api/ask
+  const handleAsk = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!askQuestion.trim() || askLoading) return;
+    setAskLoading(true);
+    setAskError(null);
+    setAskResult(null);
+
+    try {
+      const res = await fetch('/api/ask', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          question: askQuestion.trim()
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        setAskError(data.error || data.reason || `Agent failed with status ${res.status}`);
+      } else {
+        setAskResult(data);
+      }
+    } catch (err: any) {
+      setAskError(err.message || 'Failed to communicate with /api/ask');
+    } finally {
+      setAskLoading(false);
+    }
   };
 
   // Test g8_search_food_nutrition via /api/mcp
@@ -288,6 +349,18 @@ export default function App() {
         {/* Tab Navigation */}
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex gap-2 overflow-x-auto border-t border-slate-800/60 pt-1">
           <button
+            onClick={() => setActiveTab('ask')}
+            className={`px-4 py-2.5 text-sm font-medium border-b-2 transition flex items-center gap-2 ${
+              activeTab === 'ask'
+                ? 'border-emerald-500 text-emerald-400'
+                : 'border-transparent text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Bot className="w-4 h-4 text-emerald-400" />
+            <span>Ask Agent (/api/ask)</span>
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+          </button>
+          <button
             onClick={() => setActiveTab('overview')}
             className={`px-4 py-2.5 text-sm font-medium border-b-2 transition ${
               activeTab === 'overview'
@@ -333,6 +406,220 @@ export default function App() {
 
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* TAB: ASK AGENT */}
+        {activeTab === 'ask' && (
+          <div className="space-y-8">
+            {/* Ask Agent Hero Header */}
+            <div className="rounded-2xl p-6 sm:p-8 bg-gradient-to-br from-slate-900 via-slate-900 to-emerald-950/40 border border-slate-800 shadow-xl relative overflow-hidden">
+              <div className="absolute right-0 top-0 w-96 h-96 bg-emerald-500/5 rounded-full blur-3xl pointer-events-none" />
+              <div className="max-w-3xl">
+                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-semibold mb-3">
+                  <Bot className="w-3.5 h-3.5" />
+                  <span>Gemini 3.8 Flash + MCP Autonomous Agent</span>
+                </div>
+                <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-white mb-2">
+                  Ask the Food & Nutrition Intelligence Agent
+                </h2>
+                <p className="text-slate-300 text-sm leading-relaxed mb-4">
+                  Ask questions in natural language. The agent at <code className="text-emerald-300 bg-slate-800 px-2 py-0.5 rounded font-mono">POST /api/ask</code> automatically discovers and calls tools exposed by connected MCP servers (<code className="text-slate-300">MCP_SERVERS</code>) to gather verified figures, scientific research, and activity metrics.
+                </p>
+              </div>
+
+              {/* Ask Input Form */}
+              <form onSubmit={handleAsk} className="mt-4 space-y-3">
+                <div className="relative">
+                  <textarea
+                    value={askQuestion}
+                    onChange={(e) => setAskQuestion(e.target.value.slice(0, 500))}
+                    placeholder="Ask about food nutrition, clinical diet guidelines, or fitness activity expenditure..."
+                    rows={3}
+                    maxLength={500}
+                    className="w-full px-4 py-3 rounded-xl bg-slate-950 border border-slate-800 text-slate-100 placeholder-slate-500 text-sm focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition resize-none font-sans"
+                  />
+                  <div className="absolute bottom-2.5 right-3 text-[11px] font-mono text-slate-500 pointer-events-none">
+                    {askQuestion.length}/500
+                  </div>
+                </div>
+
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  {/* Preset prompt pills */}
+                  <div className="flex flex-wrap gap-1.5 text-xs">
+                    <span className="text-slate-500 self-center text-[11px] mr-1">Try:</span>
+                    <button
+                      type="button"
+                      onClick={() => setAskQuestion('How many calories and protein are in 100g of oats?')}
+                      className="px-2.5 py-1 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700/60 transition text-[11px]"
+                    >
+                      Oats nutrition
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAskQuestion('What does PubMed literature say about Mediterranean diet for cardiovascular health?')}
+                      className="px-2.5 py-1 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700/60 transition text-[11px]"
+                    >
+                      Mediterranean diet evidence
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAskQuestion('What is the calorie expenditure for user usr_102 over the last 7d?')}
+                      className="px-2.5 py-1 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700/60 transition text-[11px]"
+                    >
+                      User activity metrics
+                    </button>
+                  </div>
+
+                  {/* Submit Button */}
+                  <button
+                    type="submit"
+                    disabled={askLoading || !askQuestion.trim()}
+                    className="inline-flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-slate-950 font-semibold text-xs tracking-wide shadow-lg shadow-emerald-500/20 transition disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer flex-shrink-0"
+                  >
+                    {askLoading ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
+                        <span>Consulting Gemini & MCP Tools...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-4 h-4" />
+                        <span>Ask Agent</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
+            </div>
+
+            {/* Error Message */}
+            {askError && (
+              <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-start gap-3 shadow-lg">
+                <AlertCircle className="w-5 h-5 text-rose-400 flex-shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                  <div className="font-semibold text-rose-200">Agent Error</div>
+                  <div className="text-rose-300/90 leading-relaxed">{askError}</div>
+                </div>
+              </div>
+            )}
+
+            {/* Results Panel */}
+            {askResult && (
+              <div className="space-y-6">
+                {/* 1. The Answer */}
+                <div className="rounded-2xl p-6 bg-slate-900 border border-slate-800 shadow-xl">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-3 mb-4">
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
+                        <MessageSquare className="w-4 h-4" />
+                      </div>
+                      <h3 className="font-bold text-base text-white">Agent Answer</h3>
+                    </div>
+                    <div className="flex items-center gap-3 text-xs text-slate-400">
+                      <span className="px-2 py-0.5 rounded bg-slate-800 text-emerald-400 font-mono text-[11px] border border-slate-700">
+                        {askResult.model || 'gemini-3.8-flash'}
+                      </span>
+                      <span>
+                        Answered at: {new Date(askResult.answered_at).toLocaleTimeString()}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="text-slate-100 text-sm leading-relaxed whitespace-pre-wrap bg-slate-950/60 p-4 rounded-xl border border-slate-800/80 font-sans">
+                    {askResult.answer}
+                  </div>
+                </div>
+
+                {/* 2. Under it: Every tool called in order with its arguments */}
+                <div className="rounded-2xl p-6 bg-slate-900 border border-slate-800 shadow-xl">
+                  <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-4">
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-lg bg-sky-500/10 border border-sky-500/20 flex items-center justify-center text-sky-400">
+                        <Terminal className="w-4 h-4" />
+                      </div>
+                      <h3 className="font-bold text-base text-white">Tools Called by Agent</h3>
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 font-mono border border-slate-700">
+                        {askResult.tool_calls.length}
+                      </span>
+                    </div>
+                    <span className="text-xs text-slate-400">Invoked via MCP in chronological order</span>
+                  </div>
+
+                  {askResult.tool_calls.length === 0 ? (
+                    <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 text-slate-500 text-xs italic text-center">
+                      No tool calls were needed or invoked for this query.
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {askResult.tool_calls.map((tool, index) => (
+                        <div
+                          key={index}
+                          className="p-4 rounded-xl bg-slate-950 border border-slate-800 text-xs space-y-2 transition hover:border-slate-700"
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                              <span className="w-5 h-5 rounded bg-slate-800 text-slate-400 flex items-center justify-center font-mono text-[10px] font-bold">
+                                #{index + 1}
+                              </span>
+                              <span className="font-mono font-bold text-emerald-400 text-sm">
+                                {tool.name}
+                              </span>
+                            </div>
+
+                            {tool.failed ? (
+                              <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-rose-500/10 text-rose-400 border border-rose-500/30 flex items-center gap-1">
+                                <XCircle className="w-3 h-3" />
+                                <span>Tool Reported Failure</span>
+                              </span>
+                            ) : (
+                              <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
+                                <CheckCircle2 className="w-3 h-3" />
+                                <span>Success</span>
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="mt-2">
+                            <div className="text-[11px] text-slate-400 font-medium mb-1">Arguments:</div>
+                            <pre className="p-3 rounded-lg bg-slate-900 border border-slate-800 text-slate-200 font-mono text-[11px] overflow-x-auto leading-relaxed">
+                              {JSON.stringify(tool.args, null, 2)}
+                            </pre>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* 3. Unavailable servers in grey */}
+                {askResult.unavailable && askResult.unavailable.length > 0 && (
+                  <div className="rounded-2xl p-5 bg-slate-900/60 border border-slate-700/60 shadow-lg text-slate-400">
+                    <div className="flex items-center gap-2 mb-3">
+                      <AlertCircle className="w-4 h-4 text-slate-500" />
+                      <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                        Unavailable MCP Servers
+                      </h4>
+                      <span className="text-[10px] px-1.5 py-0.2 rounded bg-slate-800 text-slate-400 font-mono">
+                        {askResult.unavailable.length}
+                      </span>
+                    </div>
+
+                    <div className="space-y-2">
+                      {askResult.unavailable.map((srv, idx) => (
+                        <div
+                          key={idx}
+                          className="p-3 rounded-lg bg-slate-950/80 border border-slate-800 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-slate-400 font-mono"
+                        >
+                          <div className="truncate text-slate-300 font-semibold">{srv.address}</div>
+                          <div className="text-[11px] text-slate-400 italic font-sans">{srv.reason}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* TAB 1: OVERVIEW */}
         {activeTab === 'overview' && (
           <div className="space-y-8">

@@ -2,6 +2,7 @@ import express, { Request, Response } from 'express';
 import { createServer as createViteServer } from 'vite';
 import path from 'path';
 import handler from './api/mcp.js';
+import askHandler from './api/ask.js';
 import { searchFoodNutrition } from './lib/nutrition.js';
 import { getUserActivityData } from './lib/activity.js';
 import { fetchEvidenceGuidelines } from './lib/research.js';
@@ -15,6 +16,9 @@ async function startServer() {
   // Register MCP server endpoints as specified
   app.post('/api/mcp', handler);
   app.get('/api/mcp', handler);
+
+  // Register Gemini MCP Agent endpoint as specified
+  app.post('/api/ask', askHandler);
 
   // App data routes using shared lib functions
   app.get('/api/nutrition', async (req: Request, res: Response) => {
