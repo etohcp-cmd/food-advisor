@@ -1,0 +1,6 @@
+{
+  "name": "Group 8 Food Advisor MCP Server",
+  "description": "Evidence-based nutrition, fitness activity, and medical research MCP server implementing Streamable HTTP protocol for autonomous agents.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
